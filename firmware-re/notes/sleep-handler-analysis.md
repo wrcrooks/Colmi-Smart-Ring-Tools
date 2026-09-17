@@ -128,6 +128,15 @@ originally guessed — see note below) → branches on the queued packet's byte
 send helper, also decompiled here) with argument `0xc6`; `0xff` →
 `FUN_00133c10`.
 
+**Important correction (see `buffer-inventory.md`): this grouping is not
+semantically meaningful.** Decompiling `0x68`'s actual target
+(`colmi_00143e10`) shows it's a broad "refresh several unrelated subsystems"
+trigger calling nine other functions, none of which are sleep-adjacent.
+`SLEEP`, `0x68`, `0x77`, `0x81`, `0xc6`, and `0xff` share the same enqueue
+path purely because it's a generic **deferred/background-processing queue**
+used by any slow operation — not because they're related to sleep or to
+each other. Don't read anything thematic into "shares `SLEEP`'s queue."
+
 **Not a transcription error — a real finding**: re-checked against the raw
 dispatcher disassembly in `command-dispatcher.md`, and it genuinely enqueues
 `0xc7` (`cmp r0,#0xc7` at `0x1405cc`), while the consumer's explicit case is

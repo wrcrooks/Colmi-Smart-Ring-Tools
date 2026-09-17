@@ -10,6 +10,16 @@ Colmi R06), as distinct from the BLE application protocol already covered in
 Firmware binaries for 3.00.06 (full-flash dump + OTA package) and 3.00.17
 (OTA package only) are in hand. Progress so far, newest first:
 
+- [`notes/buffer-inventory.md`](notes/buffer-inventory.md) — went looking for
+  any on-device sleep/movement-classification logic (not just the `SLEEP`
+  BLE command) — found none, but did find a real flash-backed per-day
+  ring-buffer storage system (explains `atc1441`'s `Flash_800000_*.bin`
+  naming — that's a real flash address, `0x00800000`, not an arbitrary
+  label) and a previously undocumented outgoing command (`0x37`) carrying an
+  unidentified physiological metric. Also **corrects**
+  `sleep-handler-analysis.md`'s framing that the commands sharing `SLEEP`'s
+  queue path are meaningfully related — they aren't; it's a generic
+  deferred-processing queue used by unrelated slow operations.
 - [`notes/sleep-handler-analysis.md`](notes/sleep-handler-analysis.md) — the
   actual point of this whole effort, resolved: `SLEEP`'s real handler
   (found by locating and decompiling the consumer of a RAM command queue) is

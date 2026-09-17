@@ -18,7 +18,8 @@
 # scanner app. Replace the placeholder below.
 
 esphome:
-  name: colmi-ring
+  name: colmi-r06-proxy
+  friendly_name: Colmi-R06-Proxy
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -52,10 +53,9 @@ ble_client:
     id: ring_ble_client
 
 external_components:
-  - source:
-      type: local
-      path: components
+  - source: github://wrcrooks/Colmi-Smart-Ring-Tools@main
     components: [colmi_ring]
+    refresh: 1d
 
 # The hub: owns the BLE connection and polls the ring on update_interval.
 # sensor/binary_sensor/text_sensor platform entries below attach to it by id.

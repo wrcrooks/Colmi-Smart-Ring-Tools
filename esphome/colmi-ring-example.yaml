@@ -40,10 +40,9 @@ ble_client:
     id: ring_ble_client
 
 external_components:
-  - source:
-      type: local
-      path: components
+  - source: github://wrcrooks/Colmi-Smart-Ring-Tools@main
     components: [colmi_ring]
+    refresh: 1d
 
 # The hub: owns the BLE connection and polls the ring on update_interval.
 # sensor/binary_sensor/text_sensor platform entries below attach to it by id.

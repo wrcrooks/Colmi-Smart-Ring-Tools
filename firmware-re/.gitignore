@@ -1,0 +1,4 @@
+# Firmware binaries and any vendor SDK extracts are copyrighted third-party
+# artifacts — never commit them. See README.md's Legal section.
+dumps/*
+!dumps/.gitkeep

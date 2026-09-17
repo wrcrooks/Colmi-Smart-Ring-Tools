@@ -16,6 +16,11 @@ and other `R01`-`R10`-branded rings built on the BlueX RF03 SoC):
 Both implementations follow the same protocol spec, documented once in
 [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
+- **[`firmware-re/`](firmware-re/)** — requirements and a proposed plan for a
+  deeper, separate effort: decompiling the ring's actual on-chip firmware
+  (not just the BLE protocol) to resolve open questions like the sleep log's
+  field layout. Not started; no code depends on it.
+
 ## Hardware support
 
 Any ring advertising a name starting with `R01`-`R10`, `COLMI`, `VK-5098`,

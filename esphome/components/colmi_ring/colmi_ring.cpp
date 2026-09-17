@@ -1,4 +1,5 @@
 #include "colmi_ring.h"
+#include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
 #ifdef USE_ESP32
@@ -247,7 +248,10 @@ void ColmiRing::handle_notify_(const uint8_t *data, uint16_t len) {
 
     case SyncState::READING_HEART_RATE: {
       if (command != CMD_READ_HEART_RATE) return;
+      ESP_LOGV(TAG, "HR packet: %s", format_hex_pretty(data, len).c_str());
       if (!this->heart_rate_parser_.parse(data, len)) return;
+      ESP_LOGD(TAG, "Heart rate log complete: has_reading=%s latest=%u", YESNO(this->heart_rate_parser_.has_reading()),
+               this->heart_rate_parser_.latest_reading());
       if (this->heart_rate_parser_.has_reading() && this->heart_rate_sensor_ != nullptr) {
         this->heart_rate_sensor_->publish_state(this->heart_rate_parser_.latest_reading());
       }
@@ -258,7 +262,11 @@ void ColmiRing::handle_notify_(const uint8_t *data, uint16_t len) {
 
     case SyncState::READING_STEPS: {
       if (command != CMD_GET_STEP_SOMEDAY) return;
+      ESP_LOGV(TAG, "Steps packet: %s", format_hex_pretty(data, len).c_str());
       if (!this->steps_parser_.parse(data, len)) return;
+      ESP_LOGD(TAG, "Steps log complete: has_data=%s steps=%u calories=%u distance=%u",
+               YESNO(this->steps_parser_.has_data()), this->steps_parser_.steps(), this->steps_parser_.calories(),
+               this->steps_parser_.distance());
       if (this->steps_parser_.has_data()) {
         if (this->steps_sensor_ != nullptr) this->steps_sensor_->publish_state(this->steps_parser_.steps());
         if (this->calories_sensor_ != nullptr) this->calories_sensor_->publish_state(this->steps_parser_.calories());
@@ -275,7 +283,10 @@ void ColmiRing::handle_notify_(const uint8_t *data, uint16_t len) {
 
     case SyncState::READING_SLEEP: {
       if (command != CMD_SLEEP) return;
+      ESP_LOGV(TAG, "Sleep packet: %s", format_hex_pretty(data, len).c_str());
       if (!this->sleep_parser_.parse(data, len)) return;
+      ESP_LOGD(TAG, "Sleep log complete: has_data=%s estimated_minutes=%u", YESNO(this->sleep_parser_.has_data()),
+               this->sleep_parser_.estimated_minutes());
       if (this->sleep_parser_.has_data() && this->sleep_minutes_sensor_ != nullptr) {
         this->sleep_minutes_sensor_->publish_state(this->sleep_parser_.estimated_minutes());
       }

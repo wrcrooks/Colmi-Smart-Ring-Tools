@@ -24,7 +24,10 @@ std::vector<uint8_t> make_packet(uint8_t command, const std::vector<uint8_t> &pa
 
 void HeartRateLogParser::reset() {
   this->size_ = 0;
+  this->range_ = 5;
+  this->sample_index_ = 0;
   this->latest_reading_ = 0;
+  this->hourly_.fill(HourBucket{});
 }
 
 bool HeartRateLogParser::parse(const uint8_t *packet, uint16_t len) {
@@ -44,6 +47,7 @@ bool HeartRateLogParser::parse(const uint8_t *packet, uint16_t len) {
 
   if (sub_type == 0) {
     this->size_ = packet[2];
+    if (packet[3] > 0) this->range_ = packet[3];
     return false;
   }
 
@@ -130,6 +134,7 @@ void ColmiRing::dump_config() {
   LOG_SENSOR("  ", "Heart rate", this->heart_rate_sensor_);
   LOG_SENSOR("  ", "Sleep minutes (experimental)", this->sleep_minutes_sensor_);
   LOG_TEXT_SENSOR("  ", "Last sync", this->last_sync_sensor_);
+  LOG_TEXT_SENSOR("  ", "Heart rate history", this->heart_rate_history_sensor_);
   LOG_UPDATE_INTERVAL(this);
 }
 
@@ -197,6 +202,36 @@ std::vector<uint8_t> ColmiRing::heart_rate_request_payload_() {
   };
 }
 
+std::string ColmiRing::heart_rate_history_string_() {
+  // Same midnight computation as heart_rate_request_payload_, so the hour
+  // buckets line up with the day the ring actually returned.
+  uint32_t midnight = 0;
+  if (this->time_source_ != nullptr) {
+    auto now = this->time_source_->now();
+    if (now.is_valid()) {
+      now.hour = 0;
+      now.minute = 0;
+      now.second = 0;
+      now.recalc_timestamp_utc(false);
+      if (now.timestamp > 0) midnight = static_cast<uint32_t>(now.timestamp);
+    }
+  }
+
+  std::string out = to_string(midnight) + "|";
+  const auto &hourly = this->heart_rate_parser_.hourly();
+  for (uint8_t h = 0; h < 24; h++) {
+    if (h > 0) out += ";";
+    const auto &b = hourly[h];
+    if (b.count == 0) {
+      out += "x";
+    } else {
+      uint32_t mean = b.sum / b.count;
+      out += to_string(mean) + "," + to_string(b.min) + "," + to_string(b.max);
+    }
+  }
+  return out;
+}
+
 void ColmiRing::write_packet_(uint8_t command, const std::vector<uint8_t> &payload) {
   auto packet = make_packet(command, payload);
   this->last_activity_ms_ = millis();
@@ -254,6 +289,9 @@ void ColmiRing::handle_notify_(const uint8_t *data, uint16_t len) {
                this->heart_rate_parser_.latest_reading());
       if (this->heart_rate_parser_.has_reading() && this->heart_rate_sensor_ != nullptr) {
         this->heart_rate_sensor_->publish_state(this->heart_rate_parser_.latest_reading());
+      }
+      if (this->heart_rate_history_sensor_ != nullptr) {
+        this->heart_rate_history_sensor_->publish_state(this->heart_rate_history_string_());
       }
       this->state_ = SyncState::READING_STEPS;
       this->write_packet_(CMD_GET_STEP_SOMEDAY, {0, 0x0f, 0x00, 0x5f, 0x01});

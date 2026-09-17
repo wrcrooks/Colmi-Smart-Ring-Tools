@@ -11,7 +11,10 @@ and other `R01`-`R10`-branded rings built on the BlueX RF03 SoC):
 - **[`esphome/`](esphome/)** — an ESPHome `external_component` for an ESP32
   that polls the ring on a schedule and exposes battery/steps/heart-rate/SpO2
   (and experimental sleep) as native sensors in Home Assistant, no phone or
-  laptop needs to be nearby.
+  laptop needs to be nearby. Paired with
+  [`homeassistant/custom_components/colmi_ring_stats/`](homeassistant/custom_components/colmi_ring_stats/),
+  a once-a-day sync can still backfill a full hourly heart-rate curve into
+  Home Assistant, not just a single snapshot.
 
 Both implementations follow the same protocol spec, documented once in
 [`docs/PROTOCOL.md`](docs/PROTOCOL.md).

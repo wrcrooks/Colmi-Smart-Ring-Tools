@@ -81,3 +81,12 @@ text_sensor:
     colmi_ring_id: my_ring
     last_sync:
       name: "Ring last sync"
+    # Optional: the day's heart-rate log as compact hourly mean/min/max
+    # aggregates, meant for a Home Assistant automation to pick up and
+    # backfill into long-term statistics via the colmi_ring_stats custom
+    # component (../homeassistant/custom_components/colmi_ring_stats/) —
+    # lets a single once-a-day sync still show an hourly curve in HA
+    # instead of one point at sync time. Not human-readable; see that
+    # component's README for the automation and how to view the result.
+    heart_rate_history:
+      name: "Ring heart rate history"

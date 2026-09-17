@@ -1,0 +1,38 @@
+import_heart_rate_hourly:
+  name: Import ring heart-rate hourly statistics
+  description: >-
+    Parses a colmi_ring heart_rate_history text_sensor state string and
+    imports it into Home Assistant's long-term statistics as hourly
+    mean/min/max values. Intended to be called from an automation triggered
+    by that text_sensor's state changing.
+  fields:
+    entry:
+      name: Entry
+      description: The heart_rate_history text_sensor's state string.
+      required: true
+      example: "1758067200|x;x;x;x;x;x;62,58,70;65,60,75;x;x;x;x;x;x;x;x;x;x;x;x;x;x;x;x"
+      selector:
+        text:
+    statistic_id:
+      name: Statistic ID
+      description: >-
+        Must start with "colmi_ring:" - Home Assistant requires an external
+        statistic's id prefix to match the integration providing it.
+      required: false
+      example: "colmi_ring:heart_rate"
+      selector:
+        text:
+    name:
+      name: Friendly name
+      description: Display name for this statistic in the Statistics dev tool / cards.
+      required: false
+      example: "Ring heart rate (history)"
+      selector:
+        text:
+    unit_of_measurement:
+      name: Unit
+      description: Unit of measurement for this statistic.
+      required: false
+      example: "bpm"
+      selector:
+        text:

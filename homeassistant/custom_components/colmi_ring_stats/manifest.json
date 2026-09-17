@@ -1,0 +1,10 @@
+{
+  "domain": "colmi_ring_stats",
+  "name": "Colmi Ring Stats Backfill",
+  "version": "0.1.0",
+  "documentation": "https://github.com/wrcrooks/Colmi-Smart-Ring-Tools/tree/main/homeassistant/custom_components/colmi_ring_stats",
+  "issue_tracker": "https://github.com/wrcrooks/Colmi-Smart-Ring-Tools/issues",
+  "codeowners": ["@wrcrooks"],
+  "iot_class": "calculated",
+  "config_flow": false
+}

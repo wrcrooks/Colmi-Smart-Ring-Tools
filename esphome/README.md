@@ -45,6 +45,8 @@ Available metrics: `battery_level`, `charging` (binary_sensor), `steps`,
 `calories`, `distance`, `heart_rate`, `last_sync` (text_sensor), and
 `sleep_minutes` — **experimental**, see
 [`../docs/PROTOCOL.md`](../docs/PROTOCOL.md#sleep-log-sleep-68--experimental).
+Also `heart_rate_history` (text_sensor) — see "Backfilling a full day's
+heart-rate curve" below.
 
 ## What it reports
 
@@ -55,6 +57,28 @@ rather than full historical time series. Home Assistant's own recorder builds
 history from these states over time; if you want the ring's full multi-day
 history (5-minute-resolution heart rate, per-day steps, etc.), sync it with
 the webapp instead.
+
+## Backfilling a full day's heart-rate curve
+
+If your ring only comes into BLE range of the ESP32 once a day (e.g.
+overnight, near a charger), the `heart_rate` sensor above will only ever
+show one snapshot value per day — Home Assistant timestamps sensor states
+by "when received," not by anything in the data, so even though the ring's
+own log has 5-minute-resolution samples for the whole day, a single
+`publish_state()` call can't place them at the times they actually
+happened.
+
+The optional `heart_rate_history` text_sensor exists to solve this: each
+poll cycle, the firmware aggregates the day's heart-rate log into 24 hourly
+`mean,min,max` buckets and publishes them as one compact string. Paired with
+the [`colmi_ring_stats`](../homeassistant/custom_components/colmi_ring_stats/)
+custom component (a small bridge this project also provides — see that
+directory's README for why it's needed and exactly how to set it up), an
+automation can backfill those hours into Home Assistant's long-term
+statistics with correct timestamps, so a single late-night sync still
+produces an hourly curve instead of one point. Note this is hour-resolution,
+not 5-minute — that's a hard limit of Home Assistant's statistics system,
+not something either component can improve on.
 
 ## Known limitations
 

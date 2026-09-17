@@ -12,6 +12,7 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/time/real_time_clock.h"
 
+#include <array>
 #include <vector>
 
 #ifdef USE_ESP32
@@ -41,26 +42,48 @@ inline uint8_t bcd_to_decimal(uint8_t b) { return ((b >> 4) & 0x0F) * 10 + (b & 
 inline uint8_t decimal_to_bcd(uint8_t v) { return ((v / 10) << 4) | (v % 10); }
 
 /**
- * Stateful reassembly of the multi-packet heart-rate log response. Rather
- * than keep the full 288-sample day (as the webapp does, for charting), the
- * firmware only needs a single "current" value, so this just tracks the most
- * recent non-zero sample as packets stream in chronological order.
+ * Stateful reassembly of the multi-packet heart-rate log response. Tracks
+ * the most recent non-zero sample (for the simple "current reading" sensor)
+ * and, for the optional history feature, per-hour {count, sum, min, max}
+ * buckets — Home Assistant's long-term statistics are hour-resolution only
+ * (see esphome/README.md), so there's no point keeping the full 288-sample
+ * day the way the webapp does; hourly aggregates are as fine-grained as a
+ * backfill into HA can ever use.
  */
 class HeartRateLogParser {
  public:
+  struct HourBucket {
+    uint16_t count{0};
+    uint32_t sum{0};
+    uint8_t min{0};
+    uint8_t max{0};
+  };
+
   void reset();
   /** Feed one notify packet. Returns true once the log is complete (or empty). */
   bool parse(const uint8_t *packet, uint16_t len);
   bool has_reading() const { return this->latest_reading_ > 0; }
   uint8_t latest_reading() const { return this->latest_reading_; }
+  const std::array<HourBucket, 24> &hourly() const { return this->hourly_; }
 
  private:
   uint8_t size_{0};
+  uint8_t range_{5};        // minutes/sample, from the sub_type==0 header
+  uint16_t sample_index_{0};  // running sample count, for hour-of-day bucketing
   uint8_t latest_reading_{0};
+  std::array<HourBucket, 24> hourly_{};
 
   void note_sample_(uint8_t sample) {
-    if (sample != 0)
+    if (sample != 0) {
       this->latest_reading_ = sample;
+      uint32_t hour = (uint32_t) this->sample_index_ * this->range_ / 60 % 24;
+      HourBucket &b = this->hourly_[hour];
+      if (b.count == 0 || sample < b.min) b.min = sample;
+      if (b.count == 0 || sample > b.max) b.max = sample;
+      b.sum += sample;
+      b.count++;
+    }
+    this->sample_index_++;
   }
 };
 
@@ -119,6 +142,14 @@ class ColmiRing : public PollingComponent, public ble_client::BLEClientNode {
   void set_heart_rate_sensor(sensor::Sensor *s) { this->heart_rate_sensor_ = s; }
   void set_sleep_minutes_sensor(sensor::Sensor *s) { this->sleep_minutes_sensor_ = s; }
   void set_last_sync_sensor(text_sensor::TextSensor *s) { this->last_sync_sensor_ = s; }
+  /**
+   * Optional: a text_sensor carrying the day's heart-rate log as compact
+   * hourly mean/min/max aggregates, meant to be picked up by a Home
+   * Assistant automation and imported into long-term statistics via the
+   * colmi_ring_stats custom component — see esphome/README.md and
+   * homeassistant/custom_components/colmi_ring_stats/.
+   */
+  void set_heart_rate_history_sensor(text_sensor::TextSensor *s) { this->heart_rate_history_sensor_ = s; }
 
  protected:
   enum class SyncState : uint8_t {
@@ -144,6 +175,16 @@ class ColmiRing : public PollingComponent, public ble_client::BLEClientNode {
    * configure the `time:` component's timezone as UTC.
    */
   std::vector<uint8_t> heart_rate_request_payload_();
+  /**
+   * Encodes heart_rate_parser_'s hourly buckets as
+   * "<midnight_epoch_utc>|<hour0>;<hour1>;...;<hour23>", each hour field
+   * either "x" (no samples) or "mean,min,max" (integers). Deliberately a
+   * plain delimited string, not JSON, to keep it small and trivial to parse
+   * from both this firmware and the Python side (colmi_ring_stats) without
+   * a JSON library on either end. See homeassistant/custom_components/
+   * colmi_ring_stats/README.md for the consumer side of this format.
+   */
+  std::string heart_rate_history_string_();
 
   time::RealTimeClock *time_source_{nullptr};
   sensor::Sensor *battery_sensor_{nullptr};
@@ -154,6 +195,7 @@ class ColmiRing : public PollingComponent, public ble_client::BLEClientNode {
   sensor::Sensor *heart_rate_sensor_{nullptr};
   sensor::Sensor *sleep_minutes_sensor_{nullptr};
   text_sensor::TextSensor *last_sync_sensor_{nullptr};
+  text_sensor::TextSensor *heart_rate_history_sensor_{nullptr};
 
   uint16_t rx_handle_{0};
   uint16_t tx_handle_{0};

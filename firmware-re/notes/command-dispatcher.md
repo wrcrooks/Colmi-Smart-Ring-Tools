@@ -75,12 +75,17 @@ least four other command bytes**: `0x68` (104), `0x77` (119), `0x80` (128),
 "no data"/error sentinel elsewhere in the protocol — worth independent
 confirmation whether this is coincidental or meaningful). None of these
 aliases are documented in `colmi_r02_client`, `colmi.puxtril.com`, or our
-own `docs/PROTOCOL.md`. This strongly suggests the sleep/"big data" command
-family is broader than what's been empirically observed over BLE, and the
-shared handler likely branches internally on the original command byte
-(there's a `cmp r1, #0x44`-shaped comparison inside that handler region, per
-an earlier, less rigorous disassembly pass — **not independently
-re-confirmed, see Limitation below**).
+own `docs/PROTOCOL.md`.
+
+**Update — now Ghidra-confirmed, and it's more interesting than "branches
+internally":** `0x001351d8` isn't `SLEEP`-specific logic at all — it's a
+generic 16-byte-packet-to-circular-queue enqueue function (verbatim
+`memcpy` into a 10-slot RAM ring buffer, no field parsing whatsoever). The
+five aliased commands are simply the ones deferred to asynchronous
+processing rather than handled inline. See
+[`sleep-handler-analysis.md`](sleep-handler-analysis.md) for the full
+decompiled function and what's still needed to find the real per-command
+logic (whatever drains that queue).
 
 ## Limitation: can't reliably go deeper with this tooling
 
@@ -104,20 +109,15 @@ layout) needs a real disassembler that tracks code/data separation and
 cross-references (Ghidra, per the original plan), not further effort with
 plain Python + capstone linear sweeps.
 
-## Recommended next step
+## Recommended next step — done, see `sleep-handler-analysis.md`
 
-Set up Ghidra (headless is fine — `analyzeHeadless`, no GUI needed) against
-`Flash_800000_3.0.06_Firmware.bin`'s payload at base address `0x00128000`,
-let its auto-analysis handle literal pools and cross-references properly,
-then:
-
-1. Confirm/correct this table (auto-analysis may find dispatcher entries
-   this manual pass missed, e.g. `0x01`/`0x03`/`0x15` weren't isolated here).
-2. Decompile `0x001351d8` (the shared `SLEEP` handler) and trace how it
-   distinguishes its five known command-byte aliases.
-3. Follow it to wherever it writes the 16-byte response packet to identify
-   the real field layout — the actual point of this whole exercise.
-4. Repeat the same address (`0x001351d8`, pending confirmation the load
-   address holds across versions — see `header-formats.md`) against the
-   3.00.17 OTA package once loaded at its assumed address, to check whether
-   anything changed between versions.
+Ghidra headless is now set up and reproducible (see
+[`../GHIDRA_SETUP.md`](../GHIDRA_SETUP.md)) and `0x001351d8` has been
+decompiled — see [`sleep-handler-analysis.md`](sleep-handler-analysis.md)
+for what it actually does (a generic queue enqueue, not `SLEEP`-specific
+logic) and the concrete next step that finding leads to (find the queue's
+consumer). Still open, listed there: `0x01`/`0x03`/`0x15` weren't isolated
+by the manual dispatcher search above and haven't been decompiled yet;
+re-running the same approach against the 3.00.17 OTA package (once its load
+address is independently confirmed, per `header-formats.md`) hasn't been
+done either.

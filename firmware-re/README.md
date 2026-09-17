@@ -1,20 +1,33 @@
 # Firmware reverse-engineering — requirements & plan
 
-**Status: container formats decoded, disassembly not yet started.** This
-folder documents what's needed to decompile and reverse-engineer the ring's
-actual on-chip firmware (currently observed as version **3.00.17** on a
-Colmi R06), as distinct from the BLE application protocol already covered in
+**Status: container formats decoded, command dispatcher mapped, real
+disassembly (Ghidra) underway.** This folder documents what's needed to
+decompile and reverse-engineer the ring's actual on-chip firmware (currently
+observed as version **3.00.17** on a Colmi R06), as distinct from the BLE
+application protocol already covered in
 [`../docs/PROTOCOL.md`](../docs/PROTOCOL.md). Nothing in `webapp/` or
 `esphome/` depends on this work — it's a separate, optional deep-dive.
 
 Firmware binaries for 3.00.06 (full-flash dump + OTA package) and 3.00.17
-(OTA package only) are in hand — see
-[`notes/header-formats.md`](notes/header-formats.md) for confirmed findings:
-both container formats are fully decoded, the load address is confirmed via
-a real disassembly (not just guessed), and the OTA package format's
-relationship to the full-flash dump is understood well enough to locate
-3.00.17's code even without a full-flash dump of that specific version. Full
-Ghidra-based disassembly/analysis hasn't started yet.
+(OTA package only) are in hand. Progress so far, newest first:
+
+- [`notes/sleep-handler-analysis.md`](notes/sleep-handler-analysis.md) —
+  Ghidra-confirmed: the function the dispatcher calls for `SLEEP` (and four
+  other undocumented command bytes) is a **generic queue-enqueue function,
+  not sleep-specific logic**. Corrects an earlier assumption in
+  `command-dispatcher.md`. Also decompiles the `GET_STEP_SOMEDAY` and
+  `START`/`STOP_REAL_TIME` handlers. Concrete next step identified: find the
+  consumer of the RAM queue this enqueues into.
+- [`GHIDRA_SETUP.md`](GHIDRA_SETUP.md) — reproducible headless Ghidra setup
+  (no GUI needed).
+- [`notes/command-dispatcher.md`](notes/command-dispatcher.md) — located the
+  BLE command dispatcher via manual disassembly and mapped known command IDs
+  to handler addresses.
+- [`notes/header-formats.md`](notes/header-formats.md) — both container
+  formats are fully decoded, the load address is confirmed via a real
+  disassembly (not just guessed), and the OTA package format's relationship
+  to the full-flash dump is understood well enough to locate 3.00.17's code
+  even without a full-flash dump of that specific version.
 
 ## Why this is a different, harder problem
 
@@ -168,20 +181,26 @@ as a fallback if Option A isn't feasible, not the default path.
 3. Import whatever structure/register definitions can be extracted from the
    vendor SDK to label MMIO accesses as they're encountered, rather than
    reverse-engineering the peripheral map from scratch.
-4. Anchor onto known behavior: search for the packet checksum routine
-   (sum-of-bytes-mod-256, per `docs/PROTOCOL.md`) and the known command
-   byte constants (`1`, `3`, `21`, `67`, `68`, `105`, `106`, ...) to pivot
-   from "undifferentiated code" into the actual BLE command dispatch table
-   and its handlers.
+4. **Done**: searching for `CMP` against the known command byte constants
+   (`1`, `3`, `21`, `67`, `68`, `105`, `106`, ...) located the actual BLE
+   command dispatch table — see `notes/command-dispatcher.md`.
 5. Prioritize the two open questions this repo already flags as unresolved:
    - The heart-rate log's `sub_type == 23` "today" termination behavior —
-     confirm *why* it happens, not just that it does.
+     confirm *why* it happens, not just that it does. **Not yet started** —
+     the `READ_HEART_RATE` handler hasn't been located/decompiled.
    - The sleep log's (`SLEEP`, 68) field layout — this is the most valuable
      target, since it's currently pure speculation in both the webapp and
-     the ESPHome component.
+     the ESPHome component. **In progress**: `SLEEP`'s dispatcher-level
+     handler turned out to be a generic queue-enqueue function, not the real
+     logic — see `notes/sleep-handler-analysis.md` for what's confirmed and
+     the concrete next step (find the queue's consumer).
 6. Write findings up as Markdown in `firmware-re/notes/`, cross-linking back
    to and correcting/extending `docs/PROTOCOL.md` wherever this work
-   resolves something that was previously observed-but-unexplained.
+   resolves something that was previously observed-but-unexplained. **Ongoing**
+   — nothing has been ported back into `docs/PROTOCOL.md` yet since no
+   finding has reached "confirmed enough to change the wire-level spec" —
+   everything so far is firmware-internals context, not a correction to the
+   documented protocol itself.
 
 ## Where things go in this folder
 
@@ -189,9 +208,10 @@ as a fallback if Option A isn't feasible, not the default path.
   **gitignored** (see below) — never committed.
 - `notes/` — written findings, memory maps, function inventories; this is
   the actual output of the work and should be committed.
-- `scripts/` — reusable analysis tooling (currently `analyze_dumps.py`,
-  which reproduces everything in `notes/header-formats.md` against whatever
-  is in `dumps/`), committed.
+- `scripts/` — reusable analysis tooling, committed: `analyze_dumps.py`
+  (reproduces `notes/header-formats.md`), `find_dispatcher.py` (locates the
+  command dispatcher via a CMP-cluster heuristic), `DumpFunctions.java` and
+  `FindXrefs.java` (Ghidra headless post-scripts — see `GHIDRA_SETUP.md`).
 
 ## Open questions
 
@@ -203,7 +223,9 @@ as a fallback if Option A isn't feasible, not the default path.
   SoC, or does dumping require the vendor's own debug tooling from the SDK?
   Unresearched — only matters if/when a physical SWD dump is attempted (e.g.
   to independently confirm 3.00.17's load address).
-- See [`notes/header-formats.md`](notes/header-formats.md#open-questions)
-  for the more specific open questions that came out of decoding the
-  container formats (two small unidentified content regions, unconfirmed
-  header fields, whether 3.00.17 really shares 3.00.06's load address).
+- See [`notes/header-formats.md`](notes/header-formats.md#open-questions),
+  [`notes/command-dispatcher.md`](notes/command-dispatcher.md), and
+  [`notes/sleep-handler-analysis.md`](notes/sleep-handler-analysis.md) for
+  the more specific, current open questions from each stage of this work —
+  the most important one right now is finding the consumer of the RAM queue
+  `SLEEP` (and friends) enqueue into.

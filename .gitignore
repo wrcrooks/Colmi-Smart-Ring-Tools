@@ -4,3 +4,7 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Local-only tooling (e.g. Ghidra, JDK) used for firmware-re/ work - never
+# committed, these are large third-party downloads, not project files.
+.tools/

@@ -60,14 +60,14 @@ the webapp instead.
 
 - **One BLE central at a time.** If the OEM phone app is connected to the
   ring, this component's connection attempts will fail (and vice versa).
-- **Sleep is experimental.** `sleep_minutes` is a best-effort "minutes with a
-  non-zero stage byte" estimate from an under-documented command — treat it
-  as a rough diagnostic, not a real sleep-stage breakdown.
-- **Not validated against real hardware.** This was written directly against
-  the documented protocol in `docs/PROTOCOL.md` (itself ported from
-  [`colmi_r02_client`](https://github.com/tahnok/colmi_r02_client)) without
-  access to a physical ring or ESP32 in the environment that produced it.
-  `esphome compile` was used to confirm it builds cleanly for ESP32, but the
-  actual BLE exchange needs validation on real hardware — please report any
-  issues (wrong characteristic handles, unexpected packet shapes, etc.) so
-  the component and `docs/PROTOCOL.md` can be corrected together.
+- **Sleep is experimental, and may never populate at all.** `sleep_minutes`
+  is a best-effort "minutes with a non-zero stage byte" estimate from an
+  under-documented command. Worse: on firmware 3.00.06, decompiling the
+  ring's own handler shows it's a permanent stub that always replies "no
+  data" — see
+  [`../firmware-re/notes/sleep-handler-analysis.md`](../firmware-re/notes/sleep-handler-analysis.md).
+  If this sensor never reports a value on your ring, that's very likely why.
+- **Validated against real hardware** (ESP32-C3 Super Mini + a Colmi R06):
+  battery, charging, steps, calories, distance, and heart rate all confirmed
+  working over a real BLE connection. `sleep_minutes` was not observed to
+  populate, consistent with the firmware finding above.

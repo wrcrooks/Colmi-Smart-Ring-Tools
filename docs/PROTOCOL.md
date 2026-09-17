@@ -60,7 +60,7 @@ function makePacket(command: number, payload: Uint8Array = new Uint8Array()): Ui
 | `READ_HEART_RATE` | 21 / 0x15 | request/response (multi-packet) | see below. |
 | `HEART_RATE_LOG_SETTINGS` | 22 / 0x16 | request/response | request payload `[1]` to read. Response: byte 2 = enabled (`1`=on,`2`=off), byte 3 = interval in minutes. To write: payload `[2, enabledByte, intervalMinutes]`. |
 | `GET_STEP_SOMEDAY` | 67 / 0x43 | request/response (multi-packet) | see below. |
-| `SLEEP` (experimental) | 68 / 0x44 | request/response (multi-packet) | "big data" sleep query, same request shape as steps. Response field layout only partially documented upstream (a quality/stage field is unverified) — treat decoded values as best-effort and label them experimental in both UIs. |
+| `SLEEP` (experimental) | 68 / 0x44 | request/response (multi-packet) | "big data" sleep query, same request shape as steps. Response field layout only partially documented upstream (a quality/stage field is unverified) — treat decoded values as best-effort and label them experimental in both UIs. **On firmware 3.00.06, confirmed via decompilation to be a permanent stub that always replies "no data"** — see the Sleep log section below. |
 | `START_REAL_TIME` / `STOP_REAL_TIME` | 105 / 0x69, 106 / 0x6A | request/response (streamed) | see below. |
 
 ### Heart rate log (`READ_HEART_RATE`, 21)
@@ -130,6 +130,16 @@ stage/quality is not conclusively decoded anywhere public. Implementations shoul
   asserting a specific meaning.
 - Surface this in the UI/HA entity clearly marked "experimental" and invite the user
   to compare against the OEM app to help pin down the real field meaning.
+
+**Firmware-level finding (see [`../firmware-re/notes/sleep-handler-analysis.md`](../firmware-re/notes/sleep-handler-analysis.md)):**
+on ring firmware **3.00.06**, decompiling the actual handler for this command
+shows it's a straight-line function with no branches that unconditionally
+responds with the "no data" sentinel (`sub_type == 0xFF`) — there is no code
+path in that firmware build that could ever return real sleep data over this
+command. This matches every empirical test against real hardware in this
+project. **Not yet independently confirmed for 3.00.17** or other versions —
+treat the field layout above as unlikely to ever be exercised on 3.00.06-era
+firmware specifically, rather than assume it's universally broken.
 
 ### Real-time streaming readings (`START_REAL_TIME` / `STOP_REAL_TIME`, 105/106)
 

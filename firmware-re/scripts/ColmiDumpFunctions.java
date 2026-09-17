@@ -14,7 +14,7 @@ import ghidra.util.task.ConsoleTaskMonitor;
 import java.io.PrintWriter;
 import java.io.FileWriter;
 
-public class DumpFunctions extends GhidraScript {
+public class ColmiDumpFunctions extends GhidraScript {
 
     // address -> label, in hex, matching firmware-re/notes/command-dispatcher.md
     static final String[][] TARGETS = {

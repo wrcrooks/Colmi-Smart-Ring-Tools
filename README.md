@@ -16,10 +16,12 @@ and other `R01`-`R10`-branded rings built on the BlueX RF03 SoC):
 Both implementations follow the same protocol spec, documented once in
 [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
-- **[`firmware-re/`](firmware-re/)** — requirements and a proposed plan for a
-  deeper, separate effort: decompiling the ring's actual on-chip firmware
-  (not just the BLE protocol) to resolve open questions like the sleep log's
-  field layout. Not started; no code depends on it.
+- **[`firmware-re/`](firmware-re/)** — a deeper, separate effort: decompiling
+  the ring's actual on-chip firmware (not just the BLE protocol). Already
+  found that on firmware 3.00.06, the ring's own `SLEEP` command handler is
+  a permanent stub that never returns real data — see
+  [`firmware-re/notes/sleep-handler-analysis.md`](firmware-re/notes/sleep-handler-analysis.md).
+  No code in `webapp/`/`esphome/` depends on this work.
 
 ## Hardware support
 
@@ -33,11 +35,13 @@ against the Colmi R02 and R06.
 
 The BLE protocol here is reverse-engineered (not vendor-documented). Battery,
 step/calorie/distance history, heart-rate history, and real-time heart-rate/
-SpO2 readings are well-documented and should work reliably. **Sleep history is
-experimental** — the response format isn't fully decoded upstream, so treat
-those values as best-effort until confirmed against your own ring. See
-[`docs/PROTOCOL.md`](docs/PROTOCOL.md) for details, and please report
-mismatches you find.
+SpO2 readings are well-documented and confirmed working against real hardware
+(ESP32-C3 + Colmi R06). **Sleep history is experimental, and on firmware
+3.00.06 specifically confirmed (by decompiling the ring's own firmware) to
+never return real data at all** — see
+[`firmware-re/notes/sleep-handler-analysis.md`](firmware-re/notes/sleep-handler-analysis.md).
+See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for full protocol details, and
+please report mismatches you find.
 
 ## Credits
 

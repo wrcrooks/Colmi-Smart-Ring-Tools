@@ -1,11 +1,18 @@
-# SLEEP handler analysis — Ghidra-confirmed findings (and a correction)
+# SLEEP handler analysis — resolved: it's a permanent stub in this firmware
+
+**Bottom line**: on firmware 3.00.06, the ring's `SLEEP` (`0x44`) command
+handler is a straight-line function with no branches that always responds
+"no data" (`sub_type == 0xFF`), regardless of what's requested. There's no
+sleep field layout to document because this firmware build never sends real
+sleep data over this command — see "Update: found the consumer, and
+resolved the actual question" below for the full trail.
 
 Produced with a real disassembler (Ghidra 12.1.3, headless) against
 `Flash_800000_3.0.06_Firmware.bin`, following on from the manual/capstone
 pass in [`command-dispatcher.md`](command-dispatcher.md). Setup is
 reproducible — see [`../GHIDRA_SETUP.md`](../GHIDRA_SETUP.md). Scripts used:
-[`../scripts/DumpFunctions.java`](../scripts/DumpFunctions.java),
-[`../scripts/FindXrefs.java`](../scripts/FindXrefs.java).
+[`../scripts/ColmiDumpFunctions.java`](../scripts/ColmiDumpFunctions.java),
+[`../scripts/ColmiFindXrefs.java`](../scripts/ColmiFindXrefs.java).
 
 ## Headline finding: the "SLEEP handler" isn't sleep-specific at all
 
@@ -45,22 +52,89 @@ re-inspecting the packet's own byte 0), and does the actual work — including
 whatever `SLEEP`'s response field layout actually is — **lives elsewhere,
 in whatever function drains this queue.**
 
-## Where the queue consumer wasn't found (yet)
+## Update: found the consumer, and resolved the actual question
 
-Searched for references to the queue's RAM address (`0x0010615c`) using
-Ghidra's reference manager (`FindXrefs.java`) — came up empty, despite the
-enqueue function definitely reading/writing it. This is very likely a tool
-limitation, not evidence the queue is unused: Ghidra's basic reference
-manager tracks direct reads/writes and calls, but the queue address here is
-only reachable through a `ldr rX,[pc,#imm]` literal-pool load (giving
-`0x0010615c` as a *value*, not a direct memory operand) — the decompiler
-resolves this via constant propagation, which doesn't necessarily populate
-the reference database the same way. Finding the consumer needs a broader
-pass: decompile every function in the binary (not just the handful of
-addresses we already knew to target) and text-search the pseudocode for
-`0010615c`, or use Ghidra's full analysis rather than the fast headless
-default. **Left as the concrete next step** for anyone picking this up —
-it's the direct path to actually resolving `SLEEP`'s field layout.
+**`SLEEP` never returns real data on this firmware build — it's a permanent
+stub.** Full trail, in order:
+
+1. `ColmiFindXrefs.java`'s reference-manager search for `0x0010615c` came up
+   empty — a tooling limitation (Ghidra's basic reference manager doesn't
+   reliably track values only reachable through a `ldr rX,[pc,#imm]`
+   literal-pool load followed by decompiler-level constant propagation).
+2. Decompiling all 410 functions Ghidra's light auto-analysis had already
+   found (`ColmiSearchDecompiled.java`, grepping every result for
+   `10615c`) also came up empty — the consumer wasn't among them, meaning
+   auto-analysis never discovered it as a function at all.
+3. A raw byte-pattern search for the literal `5c 61 10 00` (`0x0010615c`
+   little-endian) across the *entire* 512KB flash dump found exactly two
+   hits: the already-known one inside the enqueue function (`0x1351fc`),
+   and a second one at `0x1351c8` — just 16 bytes before the enqueue
+   function's own entry point, in a ~300-byte gap auto-analysis had never
+   explored.
+4. Force-disassembling at `0x1350e8` (the actual start of that gap) revealed
+   the consumer: a queue-draining dispatch loop that reads each queued
+   packet's own command byte and branches on it — `SLEEP` (`0x44`) calls
+   **`FUN_0014233a`**.
+5. `FUN_0014233a`, decompiled in full, is a **straight-line function with no
+   branches at all**:
+
+   ```c
+   void FUN_0014233a(void)
+   {
+     // zero a 0x120-byte scratch buffer
+     memset(auStack_128, 0, 0x120);
+     // set byte 0 of the response payload to 0xFF ...
+     local_138 = 0xff;
+     // ... and send it as a 1-byte payload with command byte 0x44
+     send_packets(0x44, &local_138, 1);
+   }
+   ```
+
+   `send_packets` (`FUN_00133f4e`, confirmed by decompiling it directly) is
+   the generic "build `[command][up to 14 payload bytes][checksum]`, repeat
+   for however many packets the payload needs" helper — and in the process
+   this **independently confirms `FUN_001372f8` is the checksum function**
+   (called as `checksum(packet, 0xf)`, matching `docs/PROTOCOL.md`'s
+   sum-of-first-15-bytes-mod-256 algorithm exactly) **and `FUN_001356e8` is
+   the BLE-notify-send function** — both already inferred from the
+   `GET_STEP_SOMEDAY` handler's decompilation, now confirmed from a second,
+   independent call site.
+
+   With payload `[0xFF]`, the resulting packet is `[0x44][0xFF][13 zero
+   bytes][checksum]` — byte 1 (the `sub_type` field, per
+   `docs/PROTOCOL.md`) is unconditionally `0xFF`, the documented "no data"
+   sentinel. There is no data-dependent branch anywhere in this function
+   that could ever produce anything else.
+
+**This matches every real-hardware test from this session exactly** — the
+ring consistently returned "no data" for `SLEEP` regardless of when it was
+polled. That's not a bug in the webapp/ESPHome parsers; the firmware itself
+never implements sleep-log construction for command `0x44` in this build.
+Sleep tracking, if the OEM app surfaces it at all for this ring, must come
+from either a different command entirely, or be computed client-side by the
+app from other data (e.g. accelerometer/HR history) rather than served by
+the ring as a dedicated log — neither of which this analysis has looked
+into.
+
+The dispatch loop at `0x1350e8` also resolves real handler addresses for
+the other four commands that share `SLEEP`'s enqueue path — not yet
+decompiled individually, but worth doing if any of them turn out to matter:
+`0x68` → a short call sequence ending in a `2000`-argument call (plausibly a
+delay/timeout in ms); `0x77` → `FUN_0014217c`; `0x81` → `FUN_00135be0`
+(passed a pointer into the queued packet's own payload, so — unlike
+`SLEEP` — this one *does* look at its input); `0xc6` (not `0xc7` as
+originally guessed — see note below) → branches on the queued packet's byte
+1, one path calling `FUN_00133f2c` (the single-packet-status variant of the
+send helper, also decompiled here) with argument `0xc6`; `0xff` →
+`FUN_00133c10`.
+
+**Not a transcription error — a real finding**: re-checked against the raw
+dispatcher disassembly in `command-dispatcher.md`, and it genuinely enqueues
+`0xc7` (`cmp r0,#0xc7` at `0x1405cc`), while the consumer's explicit case is
+for `0xc6` (one less). So `0xc7` reaches the consumer, matches no case in
+the if-chain, and is silently dequeued with **no response sent at all** —
+same fate as `0x80`, which the consumer also has no explicit case for. Both
+appear to be accepted-but-unimplemented commands in this build.
 
 ## Bonus finding: `GET_STEP_SOMEDAY` (`0x43`) handler internals
 
@@ -111,10 +185,22 @@ if real-time streaming behavior for an unlisted reading type ever comes up.
 
 ## Open questions
 
-- **Primary**: find and decompile the consumer of the `0x0010615c` queue —
-  this is what actually builds `SLEEP`'s (and the other four aliased
-  commands') response packets, and is the real target for resolving the
-  sleep field-layout question this whole `firmware-re/` effort exists for.
+- **Confirm this holds on 3.00.17.** Everything above is from the 3.00.06
+  full-flash dump. We have 3.00.17 only as an OTA package with an assumed
+  (not independently verified) load address — see `header-formats.md`. If
+  that assumption holds, the same `0x0014233a`-equivalent should be
+  checkable there too; if `SLEEP` behaves differently on 3.00.17, that would
+  be a significant, actionable finding for this project (our physical test
+  ring — see the earlier `Poll cycle complete` / `has_data=NO` hardware
+  logs from this session — is closer to 3.00.17's era, and its behavior
+  matched this stub exactly, which is circumstantial support that 3.00.17
+  behaves the same way, but not proof).
+- What do `0x68`, `0x77`, `0x81`, and `0xff` (the other commands sharing the
+  `SLEEP` enqueue path) actually do? Their handler addresses are known
+  (`0x0014217c`, `0x00135be0`, `0x00133c10`, plus `0x68`'s short sequence)
+  but none have been decompiled individually yet. `0x81` is the most
+  interesting of these — unlike `SLEEP`, it's passed a pointer into its own
+  queued payload, meaning it actually inspects its input.
 - Locate and decompile the `READ_HEART_RATE` (`0x15`)/`BATTERY`
   (`0x03`)/`SET_TIME` (`0x01`) handlers — not covered in this pass, and the
   heart-rate one specifically could confirm/explain the `sub_type == 23`

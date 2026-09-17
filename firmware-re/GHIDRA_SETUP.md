@@ -47,7 +47,7 @@ export JAVA_HOME=/path/to/jdk-21
   -import dumps/app_payload_3.0.06.bin \
   -processor "ARM:LE:32:Cortex" \
   -loader BinaryLoader -loader-baseAddr 0x00128000 \
-  -postScript DumpFunctions.java \
+  -postScript ColmiDumpFunctions.java \
   -scriptPath scripts/
 ```
 
@@ -63,7 +63,7 @@ The default headless quick-analysis has no seeded entry point for a raw
 binary import (no vector table info given), so it only finds functions via
 generic prologue-pattern heuristics — it will miss real functions at
 addresses you already know about from manual analysis.
-[`scripts/DumpFunctions.java`](scripts/DumpFunctions.java) works around this
+[`scripts/ColmiDumpFunctions.java`](scripts/ColmiDumpFunctions.java) works around this
 by explicitly calling `disassemble()`/`createFunction()` at a hardcoded list
 of target addresses before decompiling them.
 
@@ -75,21 +75,37 @@ whatever functions/analysis you already committed to the project):
   /path/to/scratch/ghidra_project ColmiRE \
   -process "app_payload_3.0.06.bin" \
   -noanalysis \
-  -postScript FindXrefs.java \
+  -postScript ColmiFindXrefs.java \
   -scriptPath scripts/
 ```
 
-## Known limitation hit here
+## Known limitations hit here (and what actually worked)
 
-Ghidra's basic reference manager doesn't always record a cross-reference for
-values the *decompiler* resolves through a `ldr rX, [pc, #imm]` literal-pool
-load followed by further pointer dereferences (constant propagation is a
-decompiler-level analysis, not necessarily reflected back into the
-reference database automatically). `FindXrefs.java`'s
-`getReferencesTo(addr)` approach works for direct references (e.g. "who
-calls this function") but came up empty when searching for consumers of a
-RAM address only reachable through such an indirect chain — see
-`notes/sleep-handler-analysis.md`'s open question. A deeper pass (e.g.
-decompiling every function in the binary and grepping the pseudocode text,
-or Ghidra's function-graph/BSim tooling) would be needed to chase that
-further.
+- Ghidra's basic reference manager doesn't always record a cross-reference
+  for values the *decompiler* resolves through a `ldr rX, [pc, #imm]`
+  literal-pool load followed by further pointer dereferences (constant
+  propagation is a decompiler-level analysis, not necessarily reflected
+  back into the reference database). `ColmiFindXrefs.java`'s
+  `getReferencesTo(addr)` came up empty searching for consumers of a RAM
+  address only reachable this way.
+- Decompiling every function auto-analysis *had already found* and grepping
+  for the address (`ColmiSearchDecompiled.java`) also came up empty — not
+  because the consumer doesn't exist, but because auto-analysis never
+  discovered it as a function in the first place (it sat in an
+  unexplored gap between two other functions).
+- **What actually worked**: a plain Python raw byte-pattern search for the
+  4-byte little-endian value across the *entire* flash dump (no Ghidra
+  involved) found a second literal-pool site auto-analysis had missed,
+  which led straight to the real consumer once force-disassembled there.
+  When Ghidra's own analysis comes up empty, falling back to a dumb
+  whole-file byte search for the specific value you're chasing is cheap and
+  can succeed where structural analysis doesn't. See
+  `notes/sleep-handler-analysis.md` for the full trail this enabled
+  (resolving what `SLEEP` actually does).
+- **Script name collisions**: Ghidra resolves `-postScript <name>` by
+  searching *every* configured script path, including its own bundled
+  scripts — not just `-scriptPath`. A script named `ListFunctions.java`
+  silently ran Ghidra's own bundled sample script of the same name instead
+  of ours (which then failed with an `askFile` headless-mode error, since
+  the bundled version prompts interactively). Fix: give custom scripts
+  distinctive names (this repo prefixes them `Colmi*`).

@@ -10,7 +10,7 @@ import ghidra.program.model.listing.Function;
 import java.io.PrintWriter;
 import java.io.FileWriter;
 
-public class FindXrefs extends GhidraScript {
+public class ColmiFindXrefs extends GhidraScript {
 
     static final String[] TARGETS = {
         "0010615c",  // the actual queue struct in RAM (value stored at the 0x1351fc literal pool slot)

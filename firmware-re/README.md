@@ -1,23 +1,25 @@
 # Firmware reverse-engineering — requirements & plan
 
-**Status: container formats decoded, command dispatcher mapped, real
-disassembly (Ghidra) underway.** This folder documents what's needed to
-decompile and reverse-engineer the ring's actual on-chip firmware (currently
-observed as version **3.00.17** on a Colmi R06), as distinct from the BLE
-application protocol already covered in
+**Status: `SLEEP` resolved (on 3.00.06) — it's a permanent stub.** This
+folder documents what's needed to decompile and reverse-engineer the ring's
+actual on-chip firmware (currently observed as version **3.00.17** on a
+Colmi R06), as distinct from the BLE application protocol already covered in
 [`../docs/PROTOCOL.md`](../docs/PROTOCOL.md). Nothing in `webapp/` or
 `esphome/` depends on this work — it's a separate, optional deep-dive.
 
 Firmware binaries for 3.00.06 (full-flash dump + OTA package) and 3.00.17
 (OTA package only) are in hand. Progress so far, newest first:
 
-- [`notes/sleep-handler-analysis.md`](notes/sleep-handler-analysis.md) —
-  Ghidra-confirmed: the function the dispatcher calls for `SLEEP` (and four
-  other undocumented command bytes) is a **generic queue-enqueue function,
-  not sleep-specific logic**. Corrects an earlier assumption in
-  `command-dispatcher.md`. Also decompiles the `GET_STEP_SOMEDAY` and
-  `START`/`STOP_REAL_TIME` handlers. Concrete next step identified: find the
-  consumer of the RAM queue this enqueues into.
+- [`notes/sleep-handler-analysis.md`](notes/sleep-handler-analysis.md) — the
+  actual point of this whole effort, resolved: `SLEEP`'s real handler
+  (found by locating and decompiling the consumer of a RAM command queue) is
+  a straight-line function with **no branches** that always responds "no
+  data." On firmware 3.00.06, the ring never sends real sleep data over BLE
+  for this command — full stop, not a parsing bug. Matches every real-
+  hardware test from this session. Not yet independently confirmed on
+  3.00.17 (see that doc's Open Questions). Along the way, also confirms the
+  checksum and BLE-send functions from a second independent call site, and
+  decompiles the `GET_STEP_SOMEDAY` handler in full.
 - [`GHIDRA_SETUP.md`](GHIDRA_SETUP.md) — reproducible headless Ghidra setup
   (no GUI needed).
 - [`notes/command-dispatcher.md`](notes/command-dispatcher.md) — located the
@@ -188,12 +190,14 @@ as a fallback if Option A isn't feasible, not the default path.
    - The heart-rate log's `sub_type == 23` "today" termination behavior —
      confirm *why* it happens, not just that it does. **Not yet started** —
      the `READ_HEART_RATE` handler hasn't been located/decompiled.
-   - The sleep log's (`SLEEP`, 68) field layout — this is the most valuable
-     target, since it's currently pure speculation in both the webapp and
-     the ESPHome component. **In progress**: `SLEEP`'s dispatcher-level
-     handler turned out to be a generic queue-enqueue function, not the real
-     logic — see `notes/sleep-handler-analysis.md` for what's confirmed and
-     the concrete next step (find the queue's consumer).
+   - The sleep log's (`SLEEP`, 68) field layout — this was the most valuable
+     target, since it was pure speculation in both the webapp and the
+     ESPHome component. **Resolved (on 3.00.06)**: there is no field layout
+     to find. The real handler (found by tracing through a RAM command
+     queue, not directly reachable from the dispatcher) is a straight-line
+     stub with no branches that always responds "no data" — see
+     `notes/sleep-handler-analysis.md`. Not yet independently confirmed on
+     3.00.17.
 6. Write findings up as Markdown in `firmware-re/notes/`, cross-linking back
    to and correcting/extending `docs/PROTOCOL.md` wherever this work
    resolves something that was previously observed-but-unexplained. **Ongoing**
@@ -210,8 +214,8 @@ as a fallback if Option A isn't feasible, not the default path.
   the actual output of the work and should be committed.
 - `scripts/` — reusable analysis tooling, committed: `analyze_dumps.py`
   (reproduces `notes/header-formats.md`), `find_dispatcher.py` (locates the
-  command dispatcher via a CMP-cluster heuristic), `DumpFunctions.java` and
-  `FindXrefs.java` (Ghidra headless post-scripts — see `GHIDRA_SETUP.md`).
+  command dispatcher via a CMP-cluster heuristic), `ColmiDumpFunctions.java` and
+  `ColmiFindXrefs.java` (Ghidra headless post-scripts — see `GHIDRA_SETUP.md`).
 
 ## Open questions
 

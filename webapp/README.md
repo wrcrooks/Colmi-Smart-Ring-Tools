@@ -64,4 +64,8 @@ browser's IndexedDB) is available offline.
   phone app and this webapp (or an ESPHome node, see [`../esphome/`](../esphome/))
   will contend for the connection.
 - Sleep history parsing is best-effort; please report mismatches against your ring
-  so `docs/PROTOCOL.md` and the parsers can be corrected.
+  so `docs/PROTOCOL.md` and the parsers can be corrected. On firmware 3.00.06
+  specifically, decompiling the ring's own handler for this command shows it's a
+  permanent stub that always replies "no data" — see
+  [`../firmware-re/notes/sleep-handler-analysis.md`](../firmware-re/notes/sleep-handler-analysis.md).
+  If your ring never shows sleep data, that's very likely why, not a bug here.

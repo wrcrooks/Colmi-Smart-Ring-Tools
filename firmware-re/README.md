@@ -1,11 +1,20 @@
 # Firmware reverse-engineering — requirements & plan
 
-**Status: not started.** This folder documents what's needed to decompile and
-reverse-engineer the ring's actual on-chip firmware (currently observed as
-version **3.00.17** on a Colmi R06), as distinct from the BLE application
-protocol already covered in [`../docs/PROTOCOL.md`](../docs/PROTOCOL.md).
-Nothing in `webapp/` or `esphome/` depends on this work — it's a separate,
-optional deep-dive for whoever wants to pursue it.
+**Status: container formats decoded, disassembly not yet started.** This
+folder documents what's needed to decompile and reverse-engineer the ring's
+actual on-chip firmware (currently observed as version **3.00.17** on a
+Colmi R06), as distinct from the BLE application protocol already covered in
+[`../docs/PROTOCOL.md`](../docs/PROTOCOL.md). Nothing in `webapp/` or
+`esphome/` depends on this work — it's a separate, optional deep-dive.
+
+Firmware binaries for 3.00.06 (full-flash dump + OTA package) and 3.00.17
+(OTA package only) are in hand — see
+[`notes/header-formats.md`](notes/header-formats.md) for confirmed findings:
+both container formats are fully decoded, the load address is confirmed via
+a real disassembly (not just guessed), and the OTA package format's
+relationship to the full-flash dump is understood well enough to locate
+3.00.17's code even without a full-flash dump of that specific version. Full
+Ghidra-based disassembly/analysis hasn't started yet.
 
 ## Why this is a different, harder problem
 
@@ -53,6 +62,14 @@ one — link to them, don't vendor them (see Legal, below).
 ## Requirements
 
 ### 1. The firmware binary itself (blocking — nothing else can start without this)
+
+**Done, for now**: `dumps/` contains a full-flash dump and OTA package for
+3.00.06, an OTA package for 3.00.17, and the `atc1441` bootloader ROM dump.
+See [`notes/header-formats.md`](notes/header-formats.md) for how these
+relate to each other. Still missing: a full-flash dump of 3.00.17 itself
+(only its OTA package is in hand), needed to independently confirm the load
+address assumption carried over from 3.00.06. The two options below remain
+relevant for that.
 
 Two options, in order of preference:
 
@@ -142,9 +159,10 @@ as a fallback if Option A isn't feasible, not the default path.
 ## Proposed methodology (once the binary is in hand)
 
 1. Load the dump into Ghidra as raw binary, processor = ARM Cortex-M0,
-   Thumb mode. Set the base address from the datasheet's flash memory map
-   (0x00000000 or wherever flash is mapped for this SoC — confirm against
-   the datasheet rather than assuming).
+   Thumb mode. Base address is confirmed: `0x00128000` for the payload
+   right after a full-flash dump's 24-byte `BX24` header (see
+   `notes/header-formats.md`) — verified by disassembling that offset and
+   getting a clean function prologue, not just asserted from the header.
 2. Identify the vector table at the start of flash (stack pointer + reset
    handler are the first two words) to get a solid entry point.
 3. Import whatever structure/register definitions can be extracted from the
@@ -171,13 +189,21 @@ as a fallback if Option A isn't feasible, not the default path.
   **gitignored** (see below) — never committed.
 - `notes/` — written findings, memory maps, function inventories; this is
   the actual output of the work and should be committed.
+- `scripts/` — reusable analysis tooling (currently `analyze_dumps.py`,
+  which reproduces everything in `notes/header-formats.md` against whatever
+  is in `dumps/`), committed.
 
 ## Open questions
 
 - Where does the official Colmi app actually source OTA updates from
-  (endpoint, auth), if Option B ends up necessary? Unresearched.
+  (endpoint, auth)? Unresearched — moot for now since we already have the
+  3.00.17 OTA package directly, but relevant if a *future* version needs to
+  be obtained the same way.
 - Does OpenOCD already have (or need) a target config for this specific
   SoC, or does dumping require the vendor's own debug tooling from the SDK?
-  Unresearched.
-- Exact flash base address / memory map for Ghidra — should come from the
-  datasheet, not been confirmed here yet.
+  Unresearched — only matters if/when a physical SWD dump is attempted (e.g.
+  to independently confirm 3.00.17's load address).
+- See [`notes/header-formats.md`](notes/header-formats.md#open-questions)
+  for the more specific open questions that came out of decoding the
+  container formats (two small unidentified content regions, unconfirmed
+  header fields, whether 3.00.17 really shares 3.00.06's load address).

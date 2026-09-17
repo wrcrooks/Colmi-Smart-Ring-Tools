@@ -32,6 +32,15 @@ bool HeartRateLogParser::parse(const uint8_t *packet, uint16_t len) {
 
   if (sub_type == 255) return true;  // no data for today
 
+  // The firmware only ever requests "today" (see heart_rate_request_payload_),
+  // and for a today-query the ring terminates at sub_type 23 regardless of
+  // the `size` field from the sub_type-0 header — mirrors colmi_r02_client's
+  // `is_today() and sub_type == 23` special case. Packet 23 itself carries no
+  // additional samples. Without this, a today-query never satisfies the
+  // generic `sub_type == size - 1` check below and the state machine hangs
+  // until it times out.
+  if (sub_type == 23) return true;
+
   if (sub_type == 0) {
     this->size_ = packet[2];
     return false;

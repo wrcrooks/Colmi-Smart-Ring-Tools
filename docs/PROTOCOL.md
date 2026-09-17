@@ -77,6 +77,15 @@ Response is a stateful multi-packet stream, keyed by byte 1 (`sub_type`):
 - `sub_type == N` (2..size-1): bytes 2-14 (13 bytes) are the next 13 heart-rate
   samples. When `sub_type == size - 1`, the log is complete.
 - `sub_type == 255`: no data for the requested day.
+- **Special case for a "today" query**: when the requested day is today, the
+  ring terminates the stream at `sub_type == 23` regardless of what `size` the
+  header reported — this can arrive well before (or instead of) satisfying the
+  generic `sub_type == size - 1` check above, since "today" is naturally
+  shorter than a full historical day. Packet 23 itself carries no additional
+  samples; treat its arrival as an immediate "log complete" signal. Any
+  implementation that only ever queries "today" (e.g. a periodic poller) must
+  handle this case, or the stream will never terminate. This mirrors
+  `colmi_r02_client`'s `is_today() and sub_type == 23` check.
 
 Each sample is one byte (bpm, `0` = no reading). Samples are spaced `range` minutes
 apart starting at the log's timestamp — normally 288 samples/day at 5-minute

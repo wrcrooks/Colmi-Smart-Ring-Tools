@@ -37,14 +37,16 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-# Needed to set the ring's clock each poll cycle. Using UTC keeps the ring's
-# heart-rate-log requests exactly matching docs/PROTOCOL.md's "midnight UTC" —
-# see the comment on ColmiRing::heart_rate_request_payload_ in colmi_ring.h if
-# you'd rather use a local timezone.
+# Needed to set the ring's clock each poll cycle. A local timezone is fine —
+# ColmiRing::heart_rate_request_payload_ derives "midnight" from whatever this
+# source reports and uses that same value for the CMD_SET_TIME write earlier
+# in the same cycle, so the ring's clock and the heart-rate-log request stay
+# self-consistent regardless of timezone (see the comment on that method in
+# colmi_ring.h).
 time:
   - platform: homeassistant
     id: ha_time
-    timezone: UTC
+    timezone: America/Chicago
 
 esp32_ble_tracker:
 

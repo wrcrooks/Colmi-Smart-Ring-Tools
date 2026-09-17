@@ -1,0 +1,84 @@
+# Example ESPHome device that connects to a Colmi R02/R06-family ring and
+# exposes its data to Home Assistant. See README.md in this directory for
+# setup notes and known caveats before flashing.
+#
+# Find your ring's MAC address by connecting to it once with the webapp
+# (../webapp/) — its connection screen shows the address — or with a BLE
+# scanner app. Replace the placeholder below.
+
+esphome:
+  name: colmi-ring
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+  level: DEBUG
+
+api:
+ota:
+  platform: esphome
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Needed to set the ring's clock each poll cycle. Using UTC keeps the ring's
+# heart-rate-log requests exactly matching docs/PROTOCOL.md's "midnight UTC" —
+# see the comment on ColmiRing::heart_rate_request_payload_ in colmi_ring.h if
+# you'd rather use a local timezone.
+time:
+  - platform: homeassistant
+    id: ha_time
+    timezone: UTC
+
+esp32_ble_tracker:
+
+ble_client:
+  - mac_address: AA:BB:CC:DD:EE:FF
+    id: ring_ble_client
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [colmi_ring]
+
+# The hub: owns the BLE connection and polls the ring on update_interval.
+# sensor/binary_sensor/text_sensor platform entries below attach to it by id.
+colmi_ring:
+  - id: my_ring
+    ble_client_id: ring_ble_client
+    time_id: ha_time
+    update_interval: 15min
+
+sensor:
+  - platform: colmi_ring
+    colmi_ring_id: my_ring
+    battery_level:
+      name: "Ring battery"
+    steps:
+      name: "Ring steps today"
+    calories:
+      name: "Ring calories today"
+    distance:
+      name: "Ring distance today"
+    heart_rate:
+      name: "Ring heart rate"
+    # Experimental — see docs/PROTOCOL.md. Comment out if you'd rather not
+    # expose an unverified estimate.
+    sleep_minutes:
+      name: "Ring sleep minutes (experimental)"
+
+binary_sensor:
+  - platform: colmi_ring
+    colmi_ring_id: my_ring
+    charging:
+      name: "Ring charging"
+
+text_sensor:
+  - platform: colmi_ring
+    colmi_ring_id: my_ring
+    last_sync:
+      name: "Ring last sync"
